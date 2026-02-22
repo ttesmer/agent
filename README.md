@@ -39,4 +39,4 @@ There you can also put your [model of choice](https://openrouter.ai/models):
 export MODEL="moonshotai/kimi-k2.5"
 ```
 Et voilà, your agent:
-![The Agent Example](example.jpg)
+![The Agent Example](misc/example.jpg)
