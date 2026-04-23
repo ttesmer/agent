@@ -335,8 +335,9 @@ func executeTool(function FunctionCall) string {
 		cmd := exec.Command("sh", "-c", params.Command)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return fmt.Sprintf("Error: %v\n", err)
+			result := fmt.Sprintf("Error: %v\nOutput:\n%s", err, string(out))
+			fmt.Print(result)
+			return result
 		}
 		fmt.Printf("%s", out)
 		return string(out)
