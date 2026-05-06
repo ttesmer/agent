@@ -2,16 +2,15 @@ package main
 
 import (
 	"bufio"
-	"context"
-	"fmt"
-	"os"
-	"io"
-	"os/exec"
-	"net/http"
-	"encoding/json"
 	"bytes"
-	//"path/filepath"
-
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
 )
 
 var (
@@ -21,6 +20,9 @@ var (
 )
 
 func main() {
+	autoApprove := flag.Bool("y", false, "Auto-approve all tool calls without prompting")
+	flag.Parse()
+
   fmt.Printf("The Agent\u2122 %s (commit: %s, built: %s)\n", version, commit, date)
 	client := NewClient()
 
@@ -31,7 +33,7 @@ func main() {
 		}
 		return scanner.Text(), true
 	}
-	agent := NewAgent(client, getUserMessage)
+	agent := NewAgent(client, getUserMessage, *autoApprove)
 	err := agent.Run(context.TODO())
 	if err != nil {
 		fmt.Print("Error:\n", err.Error())
@@ -39,16 +41,18 @@ func main() {
 }
 
 type Agent struct {
-	client *Client
+	client 				 *Client
 	getUserMessage func() (string, bool)
+	autoApprove    bool
 }
 
-type Client struct {}
+type Client struct{}
 
-func NewAgent(client *Client, getUserMessage func() (string, bool)) *Agent {
+func NewAgent(client *Client, getUserMessage func() (string, bool), autoApprove bool) *Agent {
 	return &Agent{
 		client: client,
 		getUserMessage: getUserMessage,
+		autoApprove: autoApprove,
 	}
 }
 
@@ -249,7 +253,7 @@ func (a *Agent) runInference(ctx context.Context, conversation []Message) (OpenR
 	response, err := a.client.Generate(ctx, MessageBody{
 		Model: model,
 		Messages: conversation,
-		//MaxTokens: int64(1024),
+//		MaxTokens: int64(1024),
 		Tools: tools,
 	})
 	return response, err
@@ -307,15 +311,19 @@ func (a *Agent) Run(ctx context.Context) error {
 func handleToolCall(conversation []Message, toolCall ToolCall, a *Agent) Message {
 	toolResult := ""
 	if toolCall.Function.Name == "run_command" {
-		printShellCommand(toolCall)
-		approved, refusalNote := getUserApproval(a)
-		if approved {
+		printShellCommand(toolCall, a.autoApprove)
+		if a.autoApprove {
 			toolResult = executeTool(toolCall.Function)
 		} else {
-			toolResult = fmt.Sprintf(
-				"User refused tool call %s with note: \"%s\"", 
-				toolCall.ID, refusalNote,
-			)
+			approved, refusalNote := getUserApproval(a)
+			if approved {
+				toolResult = executeTool(toolCall.Function)
+			} else {
+				toolResult = fmt.Sprintf(
+					"User refused tool call %s with note: \"%s\"",
+					toolCall.ID, refusalNote,
+				)
+			}
 		}
 	}
 	toolMsg := Message{
@@ -356,10 +364,14 @@ func executeTool(function FunctionCall) string {
 	return "unknown tool"
 }
 
-func printShellCommand(toolCall ToolCall) {
+func printShellCommand(toolCall ToolCall, autoApprove bool) {
 		var shell struct { Command string }
 		json.Unmarshal([]byte(toolCall.Function.Arguments), &shell)
-		fmt.Printf("\u001b[38;5;80m$\u001b[0m %s ", shell.Command)
+		if autoApprove {
+			fmt.Printf("\u001b[38;5;80m$\u001b[0m %s\n", shell.Command)
+		} else {
+			fmt.Printf("\u001b[38;5;80m$\u001b[0m %s ", shell.Command)
+		}
 }
 
 func getUserApproval(a *Agent) (bool, string) {
